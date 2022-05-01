@@ -49,6 +49,7 @@ class MainActivity(m: WiimoteManager = WiimoteManagerImpl()) :
                     val coroutineScope = rememberCoroutineScope()
                     val scannedWiimotes = remember { mutableStateListOf<BluetoothScannedDevice>() }
                     val scanRunning = remember { mutableStateOf(false) }
+                    setComposeDeps(snackbarHostState, coroutineScope)
                     setOnScanResults {
                         scannedWiimotes.clear()
                         scannedWiimotes.addAll(it)
@@ -59,7 +60,7 @@ class MainActivity(m: WiimoteManager = WiimoteManagerImpl()) :
                     val compositionData = CompositionData(
                         hasBluetooth = packageManager.hasBluetooth() && hasBluetooth(),
                         onStartScan = {
-                            tryStartScan(snackbarHostState, coroutineScope)
+                            tryStartScan()
                         },
                         scannedWiimotes = scannedWiimotes,
                         scanRunning = scanRunning

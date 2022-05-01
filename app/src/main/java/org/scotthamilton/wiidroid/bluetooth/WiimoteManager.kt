@@ -6,6 +6,7 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothSocket
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -19,22 +20,25 @@ import androidx.annotation.RequiresApi
 import androidx.compose.material.SnackbarHostState
 import androidx.core.content.ContextCompat.getSystemService
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import org.scotthamilton.wiidroid.R
+import org.scotthamilton.wiidroid.bluetooth.utils.WiimoteProtocolePCMChannels
 import org.scotthamilton.wiidroid.bluetooth.utils.deviceNameIsWiimote
 
 interface WiimoteManager {
     fun setup(activity: ComponentActivity)
     fun bluetoothEnablingRequestCallback(r: ActivityResult)
-    fun tryStartScan(snackbarHostState: SnackbarHostState,
-                     coroutineScope: CoroutineScope)
+    fun tryStartScan()
     fun hasBluetooth(): Boolean
     fun getActionFoundReceiver(): BroadcastReceiver
     fun getScanStartedReceiver(): BroadcastReceiver
     fun getScanFinishedReceiver(): BroadcastReceiver
     fun getBtStateChangedReceiver(): BroadcastReceiver
 
+    fun setComposeDeps(snackbarHostState: SnackbarHostState, coroutineScope: CoroutineScope)
     fun setOnScanResults(callback: (wiimotes: Set<BluetoothScannedDevice>) -> Unit)
     fun setOnScanEnded(callback: () -> Unit)
+    fun connectWiimote(device: BluetoothDevice): BluetoothSocket?
 }
 
 class WiimoteManagerImpl(
@@ -46,6 +50,8 @@ class WiimoteManagerImpl(
     }
     private lateinit var activity: ComponentActivity
     private lateinit var requestEnablingBluetoothLauncher: ActivityResultLauncher<Intent>
+    private lateinit var composeSnackbarHostState: SnackbarHostState
+    private lateinit var composeCoroutineScope: CoroutineScope
     private var onScanResultsCallback: ((wiimotes: Set<BluetoothScannedDevice>) -> Unit)? = null
     private var onScanEndedCallback: (() -> Unit)? = null
     private var bluetoothManager: BluetoothManager? = null
@@ -56,27 +62,30 @@ class WiimoteManagerImpl(
         override fun onReceive(context: Context, intent: Intent) {
             when(intent.action) {
                 BluetoothDevice.ACTION_FOUND -> {
-                    val device: BluetoothDevice? =
-                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
-                    val deviceName = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
-                        hasPerm(BLUETOOTH_CONNECT)) {
-                        device?.name
-                    } else {
-                        Log.d(TAG, "can't access found device name, " +
-                                    "BLUETOOTH_CONNECT_PERM_MISSING")
-                        null
-                    }
-                    val deviceMacAddress = device?.address // MAC address
-                    val scannedDevice = BluetoothScannedDevice(
-                        deviceName ?: "",
-                        deviceMacAddress ?: "",
-                    )
-                    Log.d(TAG,"scan found device $scannedDevice")
-                    if (scannedDevice.name != "" && scannedDevice.mac_address != "") {
-                        if (deviceNameIsWiimote(scannedDevice.name)) {
-                            Log.d(TAG, "found Wiimote $scannedDevice")
-                            scanFoundWiimote(scannedDevice)
-                            onScanResultsCallback?.invoke(currentlyFoundWiimotes())
+                    val device =
+                        intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
+                    if (device != null) {
+                        val deviceName = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                            hasPerm(BLUETOOTH_CONNECT)) {
+                            device.name
+                        } else {
+                            Log.d(TAG, "can't access found device name, " +
+                                        "BLUETOOTH_CONNECT_PERM_MISSING")
+                            null
+                        }
+                        val deviceMacAddress = device.address // MAC address
+                        val scannedDevice = BluetoothScannedDevice(
+                            deviceName ?: "",
+                            deviceMacAddress ?: "",
+                            device
+                        )
+                        Log.d(TAG,"scan found device $scannedDevice")
+                        if (scannedDevice.name != "" && scannedDevice.mac_address != "") {
+                            if (deviceNameIsWiimote(scannedDevice.name)) {
+                                Log.d(TAG, "found Wiimote $scannedDevice")
+                                scanFoundWiimote(scannedDevice)
+                                onScanResultsCallback?.invoke(currentlyFoundWiimotes())
+                            }
                         }
                     }
                 }
@@ -153,16 +162,13 @@ class WiimoteManagerImpl(
         }
     }
     @SuppressLint("InlinedApi")
-    override fun tryStartScan(
-        snackbarHostState: SnackbarHostState,
-        coroutineScope: CoroutineScope
-    ) {
+    override fun tryStartScan() {
         val rationaleLauncher = ComposeSnackbarRationale(
-            snackbarHostState,
-            coroutineScope,
+            composeSnackbarHostState,
+            composeCoroutineScope,
             activity
         )
-        coroutineScope.launch {
+        composeCoroutineScope.launch {
             withContext(Dispatchers.IO) {
                 runWithPermissionOrIf(
                     BLUETOOTH_CONNECT,
@@ -178,7 +184,7 @@ class WiimoteManagerImpl(
                                 Build.VERSION.SDK_INT < Build.VERSION_CODES.S
                             }
                         ) {
-                            startBluetoothDiscovery(snackbarHostState, coroutineScope)
+                            startBluetoothDiscovery()
                         }
                     } else {
                         Log.d(
@@ -187,7 +193,7 @@ class WiimoteManagerImpl(
                         )
                         singleshotOnBluetoothEnabled = {
                             Log.d(TAG, "user enabled bluetooth, starting discovery")
-                            startBluetoothDiscovery(snackbarHostState, coroutineScope)
+                            startBluetoothDiscovery()
                         }
                         requestEnablingBluetooth()
                     }
@@ -201,34 +207,46 @@ class WiimoteManagerImpl(
     override fun getScanStartedReceiver(): BroadcastReceiver = scanStartedReceiver
     override fun getScanFinishedReceiver(): BroadcastReceiver = scanFinishedReceiver
     override fun getBtStateChangedReceiver(): BroadcastReceiver = stateChangedReceiver
+    override fun setComposeDeps(
+        snackbarHostState: SnackbarHostState,
+        coroutineScope: CoroutineScope
+    ) {
+        composeCoroutineScope = coroutineScope
+        composeSnackbarHostState = snackbarHostState
+    }
+
     override fun setOnScanResults(callback: (wiimotes: Set<BluetoothScannedDevice>) -> Unit) {
         onScanResultsCallback = callback
     }
     override fun setOnScanEnded(callback: () -> Unit) { onScanEndedCallback = callback }
+    @SuppressLint("MissingPermission", "InlinedApi")
+    @RequiresApi(Build.VERSION_CODES.Q)
+    override fun connectWiimote(device: BluetoothDevice): BluetoothSocket? =
+        runWithPermissionOrIf(
+            BLUETOOTH_CONNECT,
+            makeComposeRationaleShower(), {
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+            }
+        ) {
+            device.createL2capChannel(WiimoteProtocolePCMChannels.DataChannel.ordinal)
+        }
 
     private fun requestEnablingBluetooth() {
         requestEnablingBluetoothLauncher.launch(bluetoothEnablingRequestIntent())
     }
 
-    private fun makeComposeRationaleShower(
-        snackbarHostState: SnackbarHostState,
-        coroutineScope: CoroutineScope
-    ): RationaleShower =
+    private fun makeComposeRationaleShower(): RationaleShower =
         ComposeSnackbarRationale(
-            snackbarHostState,
-            coroutineScope,
+            composeSnackbarHostState,
+            composeCoroutineScope,
             activity
         )
 
     @SuppressLint("MissingPermission", "InlinedApi")
-    private fun startBluetoothDiscovery(
-        snackbarHostState: SnackbarHostState,
-        coroutineScope: CoroutineScope
-    ) {
-        val rationaleShower = makeComposeRationaleShower(snackbarHostState, coroutineScope)
+    private fun startBluetoothDiscovery() {
         runWithPermissionOrIf(
             BLUETOOTH_SCAN,
-            rationaleShower, {
+            makeComposeRationaleShower(), {
                 Build.VERSION.SDK_INT < Build.VERSION_CODES.S
             }
         ) {

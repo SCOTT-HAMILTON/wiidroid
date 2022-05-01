@@ -1,5 +1,6 @@
 package org.scotthamilton.wiidroid.bluetooth
 
+import android.bluetooth.BluetoothDevice
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -7,7 +8,11 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
 
-data class BluetoothScannedDevice(val name: String, val mac_address: String)
+data class BluetoothScannedDevice(
+    val name: String,
+    val mac_address: String,
+    val device: BluetoothDevice
+)
 
 interface BluetoothScanManager {
     fun startScan()

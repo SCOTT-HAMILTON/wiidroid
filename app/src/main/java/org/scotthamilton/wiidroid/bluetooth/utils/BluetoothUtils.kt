@@ -1,5 +1,6 @@
 package org.scotthamilton.wiidroid.bluetooth.utils
 
+import android.Manifest
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.content.ContextWrapper
@@ -8,7 +9,13 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
 import org.scotthamilton.wiidroid.bluetooth.WiimoteManager
+
+enum class WiimoteProtocolePCMChannels(channel: Int) {
+    ControlChannel(0x11),
+    DataChannel(0x13),
+}
 
 fun PackageManager.hasBluetooth(): Boolean =
     hasSystemFeature(PackageManager.FEATURE_BLUETOOTH)
