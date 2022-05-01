@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">wiidroid</string>
+    <string name="bt_scanning_perm_rationale">Scanning permission is needed to discover available Wiimotes.</string>
+    <string name="bt_scanning_perm_denied_msg">You won\'t be able to connect to any wiimote.</string>
+    <string name="perm_request_dialog_title">Permissions request</string>
+    <string name="grant_text">Grant</string>
+    <string name="bluetooth_connect_perm_rationale">Permission to connect to buetooth devices is needed</string>
+    <string name="bluetooth_scan_perm_rationale">Bluetooth scanning is necessary to find available devices.</string>
+</resources>
