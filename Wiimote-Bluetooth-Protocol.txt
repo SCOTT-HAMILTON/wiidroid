@@ -1,0 +1,71 @@
+// Pairing
+//// Bluetooth Pairing
+PIN is the Mac Address of the remote backward
+exemple:
+MAC=00:1E:35:3B:7E:6D
+PIN=6D7E3B351E00
+
+//// Then HID Connection
+Remote uses only the Data Pipe on PSM 0X13
+Using Bluetooth L2CAP
+0xa1 prefix = input = from remote to host
+0xa2 prefix = output = from host to remote
+
+// Buttons data
+Setting the Data reporting mode
+(a2) 12 TT MM
+TT: 0X000000 0000000 0000000 0000000
+X: 1 = continuous sending, 0 = send on changed
+
+MM: Mode, default 0X30
+   	0000 0000 0011 0000
+
+
+Example: receiving data from the buttons:
+(a2) 12 00 30
+
+Then in Input Report 0X30:
+(a1) 30 BB BB
+
+// HID Implementation :
+//// Connect to a paired device 
+BluetoothHidDevice.connect(BluetoothDevice device)
+
+//// Send a report to a bluetooth device
+BluetoothHidDevice.send(
+	BluetoothDevice device,
+	int id,
+	byte[] data
+)
+
+example:
+Set Data Input Mode to Core-Buttons-Only-Non-Continuous
+BluetoothHidDevice.send(
+	BluetoothDevice device,
+	0xa2,
+	0x120030
+)
+
+Receive Buttons data:
+
+With BluetoothHidDevice.Callback:
+BluetoothHidDevice.Callback.onSetReport (
+	BluetoothDevice device, 
+    byte type, 
+    byte id, 
+    byte[] data
+)
+
+Example: extracting Core-Buttons status:
+byte leftIsPressed  = data[0] & 0x01  // ←
+byte rightIsPressed = data[0] & 0x02  // →
+byte downIsPressed  = data[0] & 0x04  // ↓
+byte upIsPressed    = data[0] & 0x08  // ↑
+
+byte plusIsPressed  = data[0] & 0x10  // +
+byte twoIsPressed   = data[1] & 0x01  // 2
+byte oneIsPressed   = data[1] & 0x02  // 1
+byte bIsPressed     = data[1] & 0x04  // B
+byte aIsPressed     = data[1] & 0x08  // A
+byte minusIsPressed = data[1] & 0x10  // -
+byte homeIsPressed  = data[1] & 0x80  // home
