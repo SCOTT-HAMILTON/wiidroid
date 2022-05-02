@@ -9,7 +9,6 @@ import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresPermission
-
 @RequiresApi(Build.VERSION_CODES.P)
 class BluetoothHidProxyManager: BluetoothProfile.ServiceListener {
     companion object {
@@ -17,15 +16,27 @@ class BluetoothHidProxyManager: BluetoothProfile.ServiceListener {
     }
     private var hidDeviceProxy: BluetoothHidDevice? = null
     fun setup(adapter: BluetoothAdapter?, context: Context) {
-        adapter?.getProfileProxy(
+        if (adapter?.getProfileProxy(
             context,
             this,
             BluetoothProfile.HID_DEVICE
-        )
+        ) == true) {
+            Log.d(TAG, "Hid proxy successfully acquired")
+        } else {
+            Log.d(TAG, "error, failed to acquire Hid proxy")
+        }
     }
     @RequiresPermission(value="android.permission.BLUETOOTH_CONNECT")
-    fun connectDevice(device: BluetoothDevice): Boolean =
-        hidDeviceProxy?.connect(device) == true
+    fun connectDevice(device: BluetoothDevice): Boolean {
+        val proxy = hidDeviceProxy
+        return if (proxy == null) {
+            Log.d(TAG,"error, can't connect device ${device.name}, hid proxy is null")
+            false
+        } else {
+            proxy.connect(device)
+        }
+    }
+
     @RequiresPermission(value="android.permission.BLUETOOTH_CONNECT")
     fun connectedDevice(): List<BluetoothDevice>? =
         hidDeviceProxy?.connectedDevices
@@ -56,3 +67,4 @@ class BluetoothHidProxyManager: BluetoothProfile.ServiceListener {
     }
 
 }
+

@@ -53,8 +53,15 @@ class BluetoothScanManagerImpl : BluetoothScanManager {
 
     override fun scanFoundWiimote(device: BluetoothScannedDevice) {
         runOnFoundWiimotesContext {
-            foundWiimotes.add(device)
-            Log.d(TAG, "scanFoundWiimote, device=$device, foundWiimotes=$foundWiimotes")
+            val isAlreadyFound = foundWiimotes.find {
+                it.mac_address == device.mac_address && it.name == device.name
+            } != null
+            if (!isAlreadyFound) {
+                foundWiimotes.add(device)
+                Log.d(TAG, "scanFoundWiimote, device=$device, foundWiimotes=$foundWiimotes")
+            } else {
+                Log.d(TAG, "scanFoundWiimote, device already found=$device")
+            }
         }
     }
 

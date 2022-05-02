@@ -71,7 +71,6 @@ class MainActivity(m: WiimoteManager = WiimoteManagerImpl()) :
                             tryStartScan()
                         },
                         onConnectRequest = {
-                            Log.d(TAG, "Still 1")
                             lifecycleScope.launch {
                                 withContext(Dispatchers.Default) {
                                     connectWiimote(it.device, true)
