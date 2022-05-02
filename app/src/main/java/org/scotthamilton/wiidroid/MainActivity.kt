@@ -1,8 +1,10 @@
 package org.scotthamilton.wiidroid
 
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.compose.setContent
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.Button
@@ -17,6 +19,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.scotthamilton.wiidroid.bluetooth.BluetoothScannedDevice
 import org.scotthamilton.wiidroid.bluetooth.WiimoteComponentActivity
 import org.scotthamilton.wiidroid.bluetooth.WiimoteManager
@@ -27,10 +33,12 @@ import org.scotthamilton.wiidroid.bluetooth.utils.hasBluetooth
 data class CompositionData(
     val hasBluetooth: Boolean,
     val onStartScan: () -> Unit,
+    val onConnectRequest: (BluetoothScannedDevice) -> Unit,
     val scannedWiimotes: SnapshotStateList<BluetoothScannedDevice>,
     val scanRunning: MutableState<Boolean>
 )
 
+@RequiresApi(Build.VERSION_CODES.P)
 class MainActivity(m: WiimoteManager = WiimoteManagerImpl()) :
     WiimoteComponentActivity(m) {
     companion object {
@@ -61,6 +69,14 @@ class MainActivity(m: WiimoteManager = WiimoteManagerImpl()) :
                         hasBluetooth = packageManager.hasBluetooth() && hasBluetooth(),
                         onStartScan = {
                             tryStartScan()
+                        },
+                        onConnectRequest = {
+                            Log.d(TAG, "Still 1")
+                            lifecycleScope.launch {
+                                withContext(Dispatchers.Default) {
+                                    connectWiimote(it.device, true)
+                                }
+                            }
                         },
                         scannedWiimotes = scannedWiimotes,
                         scanRunning = scanRunning
@@ -118,7 +134,9 @@ fun MainContent(data: CompositionData? = null) {
                     Button(
                         onClick = {
                             Log.d(MainActivity.TAG, "user asked to connect to device $device")
-                            // TODO: should now connect to this wiimote
+                            device?.let {
+                                data.onConnectRequest.invoke(it)
+                            }
                         }
                     ) {
                         Text(device?.toString() ?: "Invalid device")

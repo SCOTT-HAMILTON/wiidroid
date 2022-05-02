@@ -12,20 +12,33 @@ import androidx.activity.ComponentActivity
 import androidx.compose.material.SnackbarDuration
 import androidx.compose.material.SnackbarHostState
 import androidx.compose.material.SnackbarResult
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.Channel
 import org.scotthamilton.wiidroid.R
-import java.util.Queue
 import java.util.concurrent.Executors
-import java.util.concurrent.Future
+import kotlin.time.Duration
+import kotlin.time.ExperimentalTime
 
 interface ActivityPermManager {
     fun setupPermManager(activity: ComponentActivity)
     fun configurePerm(perm: String, rationale: String)
-    fun <T> runWithPermissionOrIf(perm: String,
-                              rationaleShower: RationaleShower,
-                              predicate: ()->Boolean,
-                              body: ()->T): T?
+    fun <T> runBlockingWithPermissionOrIf(perm: String,
+                                          rationaleShower: RationaleShower,
+                                          predicate: ()->Boolean,
+                                          body: suspend CoroutineScope.()->T): T?
+    suspend fun <T> runWithPermissionOrIfAsync(perm: String,
+                                               rationaleShower: RationaleShower,
+                                               predicate: ()->Boolean,
+                                               body: suspend CoroutineScope.()->T): Deferred<T?>
+
+    fun <T> runBlockingWithPermissionsOrIf(perms: List<String>,
+                                          rationaleShower: RationaleShower,
+                                          predicate: ()->Boolean,
+                                          body: suspend CoroutineScope.()->T): T?
+    suspend fun <T> runWithPermissionsOrIfAsync(perms: List<String>,
+                                               rationaleShower: RationaleShower,
+                                               predicate: ()->Boolean,
+                                               body: suspend CoroutineScope.()->T): Deferred<T?>
     fun hasPerm(perm: String): Boolean
 }
 
@@ -57,15 +70,17 @@ class ComposeSnackbarRationale(
 
 typealias PermLauncher = ActivityResultLauncher<String>
 
-data class FuturePermTask(val channel: Channel<Any?>, val future: ()->Any?)
+//data class FuturePermTask(val channel: Channel<Any?>, val future: ()->Any?)
 
-class ActivityPermManagerImpl : ActivityPermManager {
+class ActivityPermManagerImpl() : ActivityPermManager {
     companion object {
         private const val TAG = "ActivityPermManagerImpl"
     }
-    private val runnerWithPermFuturesContext =
-        Executors.newSingleThreadExecutor().asCoroutineDispatcher()
-    private val runnerWithPermFutures: MutableMap<String, ArrayDeque<FuturePermTask>> = mutableMapOf()
+
+    //    private val runnerWithPermFuturesContext =
+//        Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+//    private val runnerWithPermFutures: MutableMap<String, ArrayDeque<FuturePermTask>> = mutableMapOf()
+    private val permJobsConsumer = AsyncJobConsumer<String>()
     private val permRationales: MutableMap<String, String> = mutableMapOf()
     private val registeredPermissionsContext =
         Executors.newSingleThreadExecutor().asCoroutineDispatcher()
@@ -76,14 +91,26 @@ class ActivityPermManagerImpl : ActivityPermManager {
         this.activity = activity
     }
 
+    @OptIn(ExperimentalTime::class)
     @RequiresApi(Build.VERSION_CODES.S)
-    override fun <T> runWithPermissionOrIf(
+    override fun <T> runBlockingWithPermissionOrIf(
         perm: String,
         rationaleShower: RationaleShower,
         predicate: () -> Boolean,
-        body: () -> T
-    ): T? {
-        return if (predicate() || hasPerm(perm)) {
+        body: suspend CoroutineScope.() -> T
+    ): T? = runBlocking {
+        runWithPermissionOrIfAsync(perm, rationaleShower, predicate, body).await()
+    }
+
+    @OptIn(ExperimentalTime::class)
+    @RequiresApi(Build.VERSION_CODES.S)
+    override suspend fun <T> runWithPermissionOrIfAsync(
+        perm: String,
+        rationaleShower: RationaleShower,
+        predicate: () -> Boolean,
+        body: suspend CoroutineScope.() -> T
+    ): Deferred<T?> = activity.lifecycleScope.async {
+        if (predicate() || hasPerm(perm)) {
             body()
         } else if (!isPermRegistered(perm)) {
             Log.d(
@@ -111,12 +138,12 @@ class ActivityPermManagerImpl : ActivityPermManager {
                     }
                     else -> {
                         launcher.launch(perm)
-                        val channel = Channel<Any?>()
-                        val future = FuturePermTask(channel, body)
-                        addRunnerWithPermFutures(perm, future)
-                        runBlocking {
-                            val r = channel.receive()
-                            return@runBlocking r as T?
+                        val jobHandler = permJobsConsumer.registerJob(perm) {
+                            runBlocking { body() }
+                        }
+                        async {
+                            jobHandler.waitResult(timeout = Duration.Companion.seconds(20))
+                                    as? T?
                         }
                     }
                 }
@@ -125,23 +152,51 @@ class ActivityPermManagerImpl : ActivityPermManager {
         }
     }
 
+    override fun <T> runBlockingWithPermissionsOrIf(
+        perms: List<String>,
+        rationaleShower: RationaleShower,
+        predicate: () -> Boolean,
+        body: suspend CoroutineScope.() -> T
+    ): T? = runBlocking {
+        runBlockingWithPermissionsOrIf(perms, rationaleShower, predicate, body)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    override suspend fun <T> runWithPermissionsOrIfAsync(
+        perms: List<String>,
+        rationaleShower: RationaleShower,
+        predicate: () -> Boolean,
+        body: suspend CoroutineScope.() -> T
+    ): Deferred<T?> = when (perms.size)  {
+        0 -> activity.lifecycleScope.async { body() }
+        1 -> runWithPermissionOrIfAsync(perms.first(), rationaleShower, predicate, body)
+        else -> {
+            val first = perms.first()
+            val newperms = perms.drop(1)
+            runWithPermissionOrIfAsync(
+                first, rationaleShower, predicate
+            ) {
+                runWithPermissionsOrIfAsync(newperms, rationaleShower, predicate, body).await()
+            }
+        }
+    }
+
     override fun configurePerm(perm: String, rationale: String) {
         addPermLauncher(perm, registerPermLauncher(perm))
-        permRationales.put(perm, rationale)
+        permRationales[perm] = rationale
     }
 
     private fun registerPermLauncher(perm: String): ActivityResultLauncher<String> =
         activity.registerForActivityResult(
             ActivityResultContracts.RequestPermission()
         ) { isGranted: Boolean ->
-            runOnRunnerWithPermFuturesContext {
-                val runners = runnerWithPermFutures.get(perm)?.toTypedArray()?.toList()
-                runnerWithPermFutures[perm]?.clear()
+            runBlocking {
+                val runners = permJobsConsumer.consumeJobs(perm)
                 withContext(Dispatchers.IO) {
                     if (isGranted) {
                         runners?.forEach { runner ->
                             val r = runBlocking {
-                                runner.future.invoke()
+                                runner.task()
                             }
                             runner.channel.send(r)
                         }
@@ -154,19 +209,6 @@ class ActivityPermManagerImpl : ActivityPermManager {
                     }
                 }
             }
-        }
-
-    private fun addRunnerWithPermFutures(perm: String, future: FuturePermTask) =
-        runOnRunnerWithPermFuturesContext {
-            val queue = runnerWithPermFutures[perm].let {
-                if (it != null) {
-                    it.add(future)
-                    it
-                } else {
-                    ArrayDeque(listOf(future))
-                }
-            }
-            runnerWithPermFutures.put(perm, queue)
         }
 
     private fun isPermRegistered(perm: String): Boolean =
@@ -184,13 +226,6 @@ class ActivityPermManagerImpl : ActivityPermManager {
             registeredPermissions[perm]
         }
 
-    private fun <T> runOnRunnerWithPermFuturesContext(block: suspend CoroutineScope.() -> T) =
-        runBlocking {
-            withContext(runnerWithPermFuturesContext) {
-                block()
-            }
-        }
-
     private fun <T> runOnRegisteredPermissionsContext(block: suspend CoroutineScope.() -> T) =
         runBlocking {
             withContext(registeredPermissionsContext) {
@@ -198,7 +233,6 @@ class ActivityPermManagerImpl : ActivityPermManager {
             }
         }
 
-    @RequiresApi(Build.VERSION_CODES.S)
     override fun hasPerm(perm: String): Boolean =
         ActivityCompat.checkSelfPermission(
             activity, perm
