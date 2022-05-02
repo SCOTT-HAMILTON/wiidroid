@@ -1,9 +1,6 @@
 package org.scotthamilton.wiidroid.bluetooth
 
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothHidDevice
-import android.bluetooth.BluetoothProfile
+import android.bluetooth.*
 import android.content.Context
 import android.os.Build
 import android.util.Log
@@ -15,6 +12,25 @@ class BluetoothHidProxyManager: BluetoothProfile.ServiceListener {
         private const val TAG = "BluetoothHidProxy"
     }
     private var hidDeviceProxy: BluetoothHidDevice? = null
+//    private val sdpRecord by lazy {
+//        BluetoothHidDeviceAppSdpSettings(
+//            "Pixel HID1",
+//            "Mobile BController",
+//            "bla",
+//            0,
+//            DescriptorCollection.MOUSE_KEYBOARD_COMBO
+//        )
+//    }
+//    private val qosOut by lazy {
+//        BluetoothHidDeviceAppQosSettings(
+//            BluetoothHidDeviceAppQosSettings.SERVICE_BEST_EFFORT,
+//            800,
+//            9,
+//            0,
+//            11250,
+//            BluetoothHidDeviceAppQosSettings.MAX
+//        )
+//    }
     fun setup(adapter: BluetoothAdapter?, context: Context) {
         if (adapter?.getProfileProxy(
             context,

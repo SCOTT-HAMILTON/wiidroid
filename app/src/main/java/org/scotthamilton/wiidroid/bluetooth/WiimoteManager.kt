@@ -277,11 +277,8 @@ class WiimoteManagerImpl(
             }
         ) {
             withContext(Dispatchers.IO) {
-                Log.d(TAG, "Still 1")
                 bluetoothAdapter?.cancelDiscovery()
-                Log.d(TAG, "Still 2")
                 val pairedDevices = pairedDevices()
-                Log.d(TAG, "Still 3")
                 val isAlreadyPaired =
                     pairedDevices?.let { it.find { it.address == device.address } != null } == true
                 val paired = if (!isAlreadyPaired) {
@@ -292,13 +289,39 @@ class WiimoteManagerImpl(
                    true
                 }
                 if (paired) {
-                    Log.d(TAG, "HidDeviceProxy has ${hidProxyManager.connectedDevice()?.size} " +
-                            "connected devices")
-                    if (hidProxyManager.connectDevice(device)) {
-                        Log.d(TAG, "HidProxy successfully connected to device ${device.name}")
+                    val socket = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                        device.reflectCreateInsecureL2capSocket(0x13)
                     } else {
-                        Log.d(TAG, "HidProxy failed to connect to device $device")
+                        device.createInsecureL2capChannel(0x13)
                     }
+                    if (socket == null) {
+                        Log.d(
+                            TAG, "error, failed to call createL2capSocket" +
+                                    "with reflection"
+                        )
+                    } else {
+                        Log.d(
+                            TAG, "successfully made l2cap socket with reflection, " +
+                                    "connecting it..."
+                        )
+                        socket.connect()
+                        Log.d(
+                            TAG, "connect finished, l2cap socket for ${device.name} " +
+                                    "is connected"
+                        )
+                    }
+//                    val socket = BluetoothSocket(
+//                        BluetoothSocket.TYPE_L2CAP_LE, -1, false, false, this, psm,
+//                        null);
+//                    Log.d(TAG, "is L2cap socket connected ? ${socket.isConnected}")
+//                    socket.connect()
+//                    Log.d(TAG, "HidDeviceProxy has ${hidProxyManager.connectedDevice()?.size} " +
+//                            "connected devices")
+//                    if (hidProxyManager.connectDevice(device)) {
+//                        Log.d(TAG, "HidProxy successfully connected to device ${device.name}")
+//                    } else {
+//                        Log.d(TAG, "HidProxy failed to connect to device $device")
+//                    }
                 }
                 Log.d(TAG, "Still 5")
                 null

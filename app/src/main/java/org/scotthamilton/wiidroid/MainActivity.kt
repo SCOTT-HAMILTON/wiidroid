@@ -1,5 +1,6 @@
 package org.scotthamilton.wiidroid
 
+import android.bluetooth.BluetoothDevice
 import android.os.Build
 import android.os.Bundle
 import android.util.Log

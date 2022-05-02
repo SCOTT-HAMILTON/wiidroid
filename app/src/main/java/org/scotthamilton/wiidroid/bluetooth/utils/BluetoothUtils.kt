@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothSocket
 import android.content.ContextWrapper
 import android.content.Intent
 import android.content.IntentFilter
@@ -51,6 +52,12 @@ fun WiimoteManager.onCreateWiimoteSetup(activity: ComponentActivity) {
 
 fun WiimoteManager.onDestroyWiimoteCleanup(activity: ComponentActivity) {
     unregisterBluetoothBroadcastReceiver(activity)
+}
+
+fun BluetoothDevice.reflectCreateInsecureL2capSocket(pcm: Int): BluetoothSocket? {
+    val c = BluetoothDevice::class.java
+    val m = c.getMethod("createL2capSocket", Int::class.java)
+    return m.invoke(this, 0x13) as? BluetoothSocket
 }
 
 fun deviceNameIsWiimote(deviceName: String) =
