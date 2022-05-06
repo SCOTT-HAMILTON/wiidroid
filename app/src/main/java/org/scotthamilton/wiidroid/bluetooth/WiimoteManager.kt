@@ -20,6 +20,7 @@ import androidx.core.content.ContextCompat.getSystemService
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.*
 import org.scotthamilton.wiidroid.R
+import org.scotthamilton.wiidroid.bluetooth.reflection.utils.reflectionChannelConnect
 import org.scotthamilton.wiidroid.bluetooth.utils.*
 import kotlin.time.Duration
 import kotlin.time.ExperimentalTime
@@ -45,6 +46,7 @@ class WiimoteManagerImpl(
         const val TAG = "WiimoteManagerImpl"
     }
     private val hidProxyManager = BluetoothHidProxyManager()
+    private val scanEndedJobsConsumer = AsyncJobConsumer<Boolean>()
     private val pairingRequestJobsConsumer = AsyncJobConsumer<String>()
     private val bondStatusChangeJobsConsumer = AsyncJobConsumer<String>()
     private val sdpUuidJobsConsumer = AsyncJobConsumer<String>()
@@ -111,6 +113,14 @@ class WiimoteManagerImpl(
                 BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
                     val foundWiimotes = endScan()
                     Log.d(TAG, "bluetooth scan ended, found $foundWiimotes")
+                    activity.lifecycleScope.launch {
+                        withContext(Dispatchers.IO) {
+                            scanEndedJobsConsumer.consumeJobs(true)?.forEach { job ->
+                                job.task()
+                                job.channel.send(true)
+                            }
+                        }
+                    }
                     onScanResultsCallback?.invoke(foundWiimotes)
                     onScanEndedCallback?.invoke()
                 }
@@ -199,6 +209,8 @@ class WiimoteManagerImpl(
         configurePerm(BLUETOOTH_ADMIN, "Needs to be bluetooth admin to scann lol.")
         configurePerm(ACCESS_FINE_LOCATION, "Stupidly, fine location is needed.")
         configurePerm(ACCESS_COARSE_LOCATION, "Stupidly, coarse location is needed.")
+        configurePerm(BLUETOOTH_PRIVILEGED, "Stupidly, bluetooth privileges are needed.")
+
         hidProxyManager.setup(bluetoothAdapter, activity)
     }
 
@@ -277,7 +289,10 @@ class WiimoteManagerImpl(
             }
         ) {
             withContext(Dispatchers.IO) {
+                val scanEndJobHandler = scanEndedJobsConsumer.registerJob(true) {}
                 bluetoothAdapter?.cancelDiscovery()
+                // wait for discovery process to cancel:
+                scanEndJobHandler.waitResult(Duration.seconds(20))
                 val pairedDevices = pairedDevices()
                 val isAlreadyPaired =
                     pairedDevices?.let { it.find { it.address == device.address } != null } == true
@@ -289,41 +304,38 @@ class WiimoteManagerImpl(
                    true
                 }
                 if (paired) {
-                    val socket = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                        device.reflectCreateInsecureL2capSocket(0x13)
-                    } else {
-                        device.createInsecureL2capChannel(0x13)
-                    }
-                    if (socket == null) {
-                        Log.d(
-                            TAG, "error, failed to call createL2capSocket" +
-                                    "with reflection"
-                        )
-                    } else {
-                        Log.d(
-                            TAG, "successfully made l2cap socket with reflection, " +
-                                    "connecting it..."
-                        )
-                        socket.connect()
-                        Log.d(
-                            TAG, "connect finished, l2cap socket for ${device.name} " +
-                                    "is connected"
-                        )
-                    }
-//                    val socket = BluetoothSocket(
-//                        BluetoothSocket.TYPE_L2CAP_LE, -1, false, false, this, psm,
-//                        null);
-//                    Log.d(TAG, "is L2cap socket connected ? ${socket.isConnected}")
-//                    socket.connect()
-//                    Log.d(TAG, "HidDeviceProxy has ${hidProxyManager.connectedDevice()?.size} " +
-//                            "connected devices")
-//                    if (hidProxyManager.connectDevice(device)) {
-//                        Log.d(TAG, "HidProxy successfully connected to device ${device.name}")
-//                    } else {
-//                        Log.d(TAG, "HidProxy failed to connect to device $device")
-//                    }
+                    // L2Cap
+                    {
+                        val pcm = 0x13
+                        val socket = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                            Log.d(TAG, "creating L2cap socket using reflection")
+                            device.reflectCreateInsecureL2capSocket(pcm)
+                        } else {
+                            Log.d(TAG, "creating L2cap socket using normal API")
+                            device.createInsecureL2capChannel(pcm)
+                        }
+                        if (socket == null) {
+                            Log.d(
+                                TAG, "error, failed to call createL2capSocket" +
+                                        "with reflection"
+                            )
+                        } else {
+                            Log.d(
+                                TAG, "successfully made l2cap socket with reflection, " +
+                                        "connecting it..."
+                            )
+                            socket.connect()
+                            Log.d(
+                                TAG, "connect finished, l2cap socket for ${device.name} " +
+                                        "is connected"
+                            )
+                        }
+                    }()
+                    // HID Host
+//                    {
+//                        hidProxyManager.connectDevice(device)
+//                    }()
                 }
-                Log.d(TAG, "Still 5")
                 null
             }
         }
@@ -409,5 +421,6 @@ class WiimoteManagerImpl(
         runBlockingWithPermissionOrIf(BLUETOOTH_CONNECT, makeComposeRationaleShower(),
             { Build.VERSION.SDK_INT < Build.VERSION_CODES.S }) {
             bluetoothAdapter?.bondedDevices
+//            hidProxyManager.connectedDevice()?.toSet()
         }
 }

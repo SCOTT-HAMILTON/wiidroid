@@ -13,6 +13,7 @@ import android.os.Build
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.text.toLowerCase
 import androidx.core.app.ActivityCompat
 import org.scotthamilton.wiidroid.bluetooth.ActivityPermManager
 import org.scotthamilton.wiidroid.bluetooth.BluetoothScannedDevice
@@ -57,7 +58,17 @@ fun WiimoteManager.onDestroyWiimoteCleanup(activity: ComponentActivity) {
 fun BluetoothDevice.reflectCreateInsecureL2capSocket(pcm: Int): BluetoothSocket? {
     val c = BluetoothDevice::class.java
     val m = c.getMethod("createL2capSocket", Int::class.java)
-    return m.invoke(this, 0x13) as? BluetoothSocket
+    return m.invoke(this, pcm) as? BluetoothSocket
+//    val m = c.getMethod("createL2capCocSocket", Int::class.java, Int::class.java)
+//    return m.invoke(this, BluetoothDevice.TRANSPORT_LE, pcm) as? BluetoothSocket
+}
+
+fun BluetoothDevice.reflectShowMethods(filter: String) {
+    val c = BluetoothDevice::class.java
+    val ms = c.declaredMethods.iterator().asSequence().toList().filter {
+        filter.lowercase() in it.name.lowercase()
+    }
+    Log.d(WiimoteManagerImpl.TAG,"Found ${ms.size} methods: ${ms.map{it.name}}")
 }
 
 fun deviceNameIsWiimote(deviceName: String) =
@@ -70,6 +81,9 @@ fun String.macAddressToByteList(): ByteArray =
 
 fun ByteArray.toPinStr(): String =
     joinToString(":") { String.format("%02X", it) }
+
+fun List<Int>.toGoodByteArray(): ByteArray =
+    map {it.toByte()}.toByteArray()
 
 @SuppressLint("MissingPermission")
 fun BluetoothDevice.toScannedDevice(p: ActivityPermManager): BluetoothScannedDevice {

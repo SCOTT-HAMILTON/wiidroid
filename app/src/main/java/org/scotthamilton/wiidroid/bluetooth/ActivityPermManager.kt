@@ -110,55 +110,58 @@ class ActivityPermManagerImpl() : ActivityPermManager {
         predicate: () -> Boolean,
         body: suspend CoroutineScope.() -> T
     ): Deferred<T?> = activity.lifecycleScope.async {
-        if (predicate() || hasPerm(perm)) {
-            body()
-        } else if (!isPermRegistered(perm)) {
-            Log.d(
-                TAG, "error, can't ask permission $perm if launcher " +
-                        "not already registered, try configurePerm($perm, <rationale>)"
-            )
-            null
-        } else {
-            val permLauncher = findPermLauncher(perm)
-            permLauncher?.let { launcher ->
-                when {
-                    ActivityCompat.shouldShowRequestPermissionRationale(
-                        activity,
-                        perm
-                    ) -> {
-                        rationaleShower.showRationaleWithAction(
-                            permRationales[perm] ?: ""
-                        ) { accepted ->
-                            if (accepted) {
-                                launcher.launch(perm)
-                            } else {
-                                Log.d(TAG, "used refused to grant permission $perm")
+        withContext(Dispatchers.Default) {
+            if (predicate() || hasPerm(perm)) {
+                body()
+            } else if (!isPermRegistered(perm)) {
+                Log.d(
+                    TAG, "error, can't ask permission $perm if launcher " +
+                            "not already registered, try configurePerm($perm, <rationale>)"
+                )
+                null
+            } else {
+                val permLauncher = findPermLauncher(perm)
+                permLauncher?.let { launcher ->
+                    when {
+                        ActivityCompat.shouldShowRequestPermissionRationale(
+                            activity,
+                            perm
+                        ) -> {
+                            rationaleShower.showRationaleWithAction(
+                                permRationales[perm] ?: ""
+                            ) { accepted ->
+                                if (accepted) {
+                                    launcher.launch(perm)
+                                } else {
+                                    Log.d(TAG, "used refused to grant permission $perm")
+                                }
+                            }
+                        }
+                        else -> {
+                            launcher.launch(perm)
+                            val jobHandler = permJobsConsumer.registerJob(perm) {
+                                runBlocking { body() }
+                            }
+                            async {
+                                jobHandler.waitResult(timeout = Duration.Companion.seconds(20))
+                                        as? T?
                             }
                         }
                     }
-                    else -> {
-                        launcher.launch(perm)
-                        val jobHandler = permJobsConsumer.registerJob(perm) {
-                            runBlocking { body() }
-                        }
-                        async {
-                            jobHandler.waitResult(timeout = Duration.Companion.seconds(20))
-                                    as? T?
-                        }
-                    }
                 }
+                null
             }
-            null
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.S)
     override fun <T> runBlockingWithPermissionsOrIf(
         perms: List<String>,
         rationaleShower: RationaleShower,
         predicate: () -> Boolean,
         body: suspend CoroutineScope.() -> T
     ): T? = runBlocking {
-        runBlockingWithPermissionsOrIf(perms, rationaleShower, predicate, body)
+        runWithPermissionsOrIfAsync(perms, rationaleShower, predicate, body).await()
     }
 
     @RequiresApi(Build.VERSION_CODES.S)
@@ -167,16 +170,18 @@ class ActivityPermManagerImpl() : ActivityPermManager {
         rationaleShower: RationaleShower,
         predicate: () -> Boolean,
         body: suspend CoroutineScope.() -> T
-    ): Deferred<T?> = when (perms.size)  {
-        0 -> activity.lifecycleScope.async { body() }
-        1 -> runWithPermissionOrIfAsync(perms.first(), rationaleShower, predicate, body)
-        else -> {
-            val first = perms.first()
-            val newperms = perms.drop(1)
-            runWithPermissionOrIfAsync(
-                first, rationaleShower, predicate
-            ) {
-                runWithPermissionsOrIfAsync(newperms, rationaleShower, predicate, body).await()
+    ): Deferred<T?> {
+        return when (perms.size) {
+            0 -> activity.lifecycleScope.async { body() }
+            1 -> runWithPermissionOrIfAsync(perms.first(), rationaleShower, predicate, body)
+            else -> {
+                val first = perms.first()
+                val newperms = perms.drop(1)
+                runWithPermissionOrIfAsync(
+                    first, rationaleShower, predicate
+                ) {
+                    runWithPermissionsOrIfAsync(newperms, rationaleShower, predicate, body).await()
+                }
             }
         }
     }
