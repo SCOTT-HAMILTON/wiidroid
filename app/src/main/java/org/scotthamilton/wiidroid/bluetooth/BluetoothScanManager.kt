@@ -1,6 +1,6 @@
 package org.scotthamilton.wiidroid.bluetooth
 
-import android.bluetooth.BluetoothDevice
+import android.os.Parcelable
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -8,18 +8,18 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
 
-data class BluetoothScannedDevice(
+data class ScannedDevice(
     val name: String,
     val mac_address: String,
-    val device: BluetoothDevice
+    val device: Parcelable
 )
 
 interface BluetoothScanManager {
     fun startScan()
-    fun endScan(): Set<BluetoothScannedDevice>
-    fun scanFoundWiimote(device: BluetoothScannedDevice)
-    fun previousScanWiimotes(): Set<BluetoothScannedDevice>?
-    fun currentlyFoundWiimotes(): Set<BluetoothScannedDevice>
+    fun endScan(): Set<ScannedDevice>
+    fun scanFoundWiimote(device: ScannedDevice)
+    fun previousScanWiimotes(): Set<ScannedDevice>?
+    fun currentlyFoundWiimotes(): Set<ScannedDevice>
 }
 
 class BluetoothScanManagerImpl : BluetoothScanManager {
@@ -28,8 +28,8 @@ class BluetoothScanManagerImpl : BluetoothScanManager {
     }
     private val foundWiimotesContext =
         Executors.newSingleThreadExecutor().asCoroutineDispatcher()
-    private val foundWiimotes: MutableSet<BluetoothScannedDevice> = mutableSetOf()
-    private var previousScanWiimotes: Set<BluetoothScannedDevice>? = null
+    private val foundWiimotes: MutableSet<ScannedDevice> = mutableSetOf()
+    private var previousScanWiimotes: Set<ScannedDevice>? = null
 
     private fun <T> runOnFoundWiimotesContext(block: suspend CoroutineScope.() -> T) =
         runBlocking {
@@ -43,15 +43,15 @@ class BluetoothScanManagerImpl : BluetoothScanManager {
             foundWiimotes.clear()
         }
 
-    override fun endScan(): Set<BluetoothScannedDevice> =
+    override fun endScan(): Set<ScannedDevice> =
         runOnFoundWiimotesContext {
-            val found: Set<BluetoothScannedDevice> = foundWiimotes.asIterable().toList().toSet()
+            val found: Set<ScannedDevice> = foundWiimotes.asIterable().toList().toSet()
             foundWiimotes.clear()
             previousScanWiimotes = found
             return@runOnFoundWiimotesContext found
         }
 
-    override fun scanFoundWiimote(device: BluetoothScannedDevice) {
+    override fun scanFoundWiimote(device: ScannedDevice) {
         runOnFoundWiimotesContext {
             val isAlreadyFound = foundWiimotes.find {
                 it.mac_address == device.mac_address && it.name == device.name
@@ -65,10 +65,10 @@ class BluetoothScanManagerImpl : BluetoothScanManager {
         }
     }
 
-    override fun previousScanWiimotes(): Set<BluetoothScannedDevice>? =
+    override fun previousScanWiimotes(): Set<ScannedDevice>? =
         previousScanWiimotes
 
-    override fun currentlyFoundWiimotes(): Set<BluetoothScannedDevice> =
+    override fun currentlyFoundWiimotes(): Set<ScannedDevice> =
         runOnFoundWiimotesContext {
             foundWiimotes.asIterable().toList().toSet()
         }

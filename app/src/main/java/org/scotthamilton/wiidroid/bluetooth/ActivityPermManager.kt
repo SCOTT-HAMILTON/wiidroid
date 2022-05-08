@@ -72,7 +72,7 @@ typealias PermLauncher = ActivityResultLauncher<String>
 
 //data class FuturePermTask(val channel: Channel<Any?>, val future: ()->Any?)
 
-class ActivityPermManagerImpl() : ActivityPermManager {
+class ActivityPermManagerImpl : ActivityPermManager {
     companion object {
         private const val TAG = "ActivityPermManagerImpl"
     }

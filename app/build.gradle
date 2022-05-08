@@ -17,6 +17,22 @@ android {
         vectorDrawables {
             useSupportLibrary true
         }
+        externalNativeBuild {
+            cmake {
+                cppFlags '-std=c++17'
+                arguments \
+                        "-DNDK_BUILD=$android.ndkDirectory/ndk-build",
+                        "-DPROJECT_DIR=$projectDir",
+                        "-DCMAKE_FIND_DEBUG_MODE=TRUE"
+                version '3.18.1'
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file('src/main/cpp/CMakeLists.txt')
+        }
     }
 
     buildTypes {
@@ -45,6 +61,12 @@ android {
     }
 }
 
+task patchHidapi(type:Exec) {
+    workingDir "${projectDir}/../submodules/hidapi"
+    commandLine "${projectDir}/../submodules/diffs/apply.sh"
+}
+tasks.preBuild.dependsOn(patchHidapi)
+
 dependencies {
 
     implementation 'androidx.core:core-ktx:1.7.0'
@@ -55,7 +77,6 @@ dependencies {
     implementation 'androidx.activity:activity-compose:1.3.1'
     implementation 'androidx.compose.material:material:1.1.1'
     implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.4.1"
-
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.3'

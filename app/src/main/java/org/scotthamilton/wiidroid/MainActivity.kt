@@ -1,6 +1,5 @@
 package org.scotthamilton.wiidroid
 
-import android.bluetooth.BluetoothDevice
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -24,29 +23,36 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.scotthamilton.wiidroid.bluetooth.BluetoothScannedDevice
+import org.scotthamilton.wiidroid.bluetooth.ScannedDevice
 import org.scotthamilton.wiidroid.bluetooth.WiimoteComponentActivity
-import org.scotthamilton.wiidroid.bluetooth.WiimoteManager
 import org.scotthamilton.wiidroid.bluetooth.WiimoteManagerImpl
-import org.scotthamilton.wiidroid.ui.theme.WiidroidTheme
 import org.scotthamilton.wiidroid.bluetooth.utils.hasBluetooth
+import org.scotthamilton.wiidroid.ui.theme.WiidroidTheme
 
 data class CompositionData(
     val hasBluetooth: Boolean,
     val onStartScan: () -> Unit,
-    val onConnectRequest: (BluetoothScannedDevice) -> Unit,
-    val scannedWiimotes: SnapshotStateList<BluetoothScannedDevice>,
+    val onConnectRequest: (ScannedDevice) -> Unit,
+    val scannedWiimotes: SnapshotStateList<ScannedDevice>,
     val scanRunning: MutableState<Boolean>
 )
 
+typealias WiimoteManagerImplType = WiimoteManagerImpl
+
 @RequiresApi(Build.VERSION_CODES.P)
-class MainActivity(m: WiimoteManager = WiimoteManagerImpl()) :
-    WiimoteComponentActivity(m) {
+class MainActivity(m: WiimoteManagerImplType = WiimoteManagerImplType()) :
+    WiimoteComponentActivity<WiimoteManagerImplType>(m) {
     companion object {
         const val TAG = "MainActivity"
+        init {
+            System.loadLibrary("native-lib");
+        }
     }
+    external fun testInitHIDAPI(): String
+    @RequiresApi(Build.VERSION_CODES.S)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d(TAG, "testInitHIDAPI()=${testInitHIDAPI()}")
         setContent {
             WiidroidTheme {
                 // A surface container using the 'background' color from the theme
@@ -55,11 +61,11 @@ class MainActivity(m: WiimoteManager = WiimoteManagerImpl()) :
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val snackbarHostState = remember { SnackbarHostState() }
-                    val coroutineScope = rememberCoroutineScope()
-                    val scannedWiimotes = remember { mutableStateListOf<BluetoothScannedDevice>() }
+                    val scannedWiimotes = remember { mutableStateListOf<ScannedDevice>() }
                     val scanRunning = remember { mutableStateOf(false) }
-                    setComposeDeps(snackbarHostState, coroutineScope)
+                    setComposeDeps(snackbarHostState)
                     setOnScanResults {
+                        Log.d(TAG, "scan result: $it")
                         scannedWiimotes.clear()
                         scannedWiimotes.addAll(it)
                     }
@@ -74,7 +80,7 @@ class MainActivity(m: WiimoteManager = WiimoteManagerImpl()) :
                         onConnectRequest = {
                             lifecycleScope.launch {
                                 withContext(Dispatchers.Default) {
-                                    connectWiimote(it.device, true)
+                                    connectWiimote(it, true)
                                 }
                             }
                         },
@@ -105,7 +111,9 @@ fun MainContent(data: CompositionData? = null) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Spacer(modifier = Modifier.fillMaxWidth().height(1.dp))
+            Spacer(modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp))
             Text(
                 text = if (data?.hasBluetooth == true) {
                     "We do have bluetooth !"
@@ -122,10 +130,14 @@ fun MainContent(data: CompositionData? = null) {
             ) {
                 Text("Let's find some wiimotes")
             }
-            Spacer(modifier = Modifier.fillMaxWidth().height(10.dp))
+            Spacer(modifier = Modifier
+                .fillMaxWidth()
+                .height(10.dp))
             val wiimotes = data?.scannedWiimotes?.asIterable()?.toList()
             LazyColumn(
-                modifier = Modifier.fillMaxHeight().fillMaxWidth(0.8f),
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.8f),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(5.dp)
             ) {
@@ -146,7 +158,6 @@ fun MainContent(data: CompositionData? = null) {
         }
     }
 }
-
 
 @Preview(showBackground = true)
 @Composable

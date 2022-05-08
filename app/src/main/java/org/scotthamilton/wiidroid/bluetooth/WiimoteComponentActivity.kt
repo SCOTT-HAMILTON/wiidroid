@@ -1,18 +1,21 @@
 package org.scotthamilton.wiidroid.bluetooth
 
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import org.scotthamilton.wiidroid.bluetooth.utils.onCreateWiimoteSetup
-import org.scotthamilton.wiidroid.bluetooth.utils.onDestroyWiimoteCleanup
+import androidx.annotation.RequiresApi
 
-open class WiimoteComponentActivity(m: WiimoteManager) : ComponentActivity(), WiimoteManager by m {
+open class WiimoteComponentActivity<W : WiimoteManager>(private val m: W) :
+    ComponentActivity(), WiimoteManager by m {
+    @RequiresApi(Build.VERSION_CODES.S)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        onCreateWiimoteSetup(this)
+        setup(this)
     }
 
+    @RequiresApi(Build.VERSION_CODES.P)
     override fun onDestroy() {
-        onDestroyWiimoteCleanup(this)
+        cleanUp()
         super.onDestroy()
     }
 }

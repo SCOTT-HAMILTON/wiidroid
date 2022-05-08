@@ -6,18 +6,14 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
 import android.content.ContextWrapper
-import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import androidx.activity.ComponentActivity
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.ui.text.toLowerCase
-import androidx.core.app.ActivityCompat
+import androidx.annotation.RequiresApi
 import org.scotthamilton.wiidroid.bluetooth.ActivityPermManager
-import org.scotthamilton.wiidroid.bluetooth.BluetoothScannedDevice
-import org.scotthamilton.wiidroid.bluetooth.WiimoteManager
+import org.scotthamilton.wiidroid.bluetooth.ScannedDevice
 import org.scotthamilton.wiidroid.bluetooth.WiimoteManagerImpl
 
 enum class WiimoteProtocolePCMChannels(channel: Int) {
@@ -28,31 +24,9 @@ enum class WiimoteProtocolePCMChannels(channel: Int) {
 fun PackageManager.hasBluetooth(): Boolean =
     hasSystemFeature(PackageManager.FEATURE_BLUETOOTH)
 
-fun WiimoteManager.registerBluetoothBroadcastReceiver(context: ContextWrapper) {
-    val filter = IntentFilter(BluetoothDevice.ACTION_FOUND)
-    filter.addAction(BluetoothDevice.ACTION_PAIRING_REQUEST)
-    filter.addAction(BluetoothAdapter.ACTION_DISCOVERY_STARTED)
-    filter.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
-    filter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
-    filter.addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
-    filter.addAction(BluetoothDevice.ACTION_UUID)
-    Log.d(WiimoteManagerImpl.TAG, "registered bluetooth broadcast receiver")
-    context.registerReceiver(getBluetoothBroadcastReceiver(), filter)
-}
-
-fun WiimoteManager.unregisterBluetoothBroadcastReceiver(context: ContextWrapper) {
-    Log.d(WiimoteManagerImpl.TAG, "unregistered bluetooth broadcast receiver")
-
-    context.unregisterReceiver(getBluetoothBroadcastReceiver())
-}
-
-fun WiimoteManager.onCreateWiimoteSetup(activity: ComponentActivity) {
+@RequiresApi(Build.VERSION_CODES.S)
+fun WiimoteManagerImpl.onCreateWiimoteSetup(activity: ComponentActivity) {
     setup(activity)
-    registerBluetoothBroadcastReceiver(activity)
-}
-
-fun WiimoteManager.onDestroyWiimoteCleanup(activity: ComponentActivity) {
-    unregisterBluetoothBroadcastReceiver(activity)
 }
 
 fun BluetoothDevice.reflectCreateInsecureL2capSocket(pcm: Int): BluetoothSocket? {
@@ -86,7 +60,7 @@ fun List<Int>.toGoodByteArray(): ByteArray =
     map {it.toByte()}.toByteArray()
 
 @SuppressLint("MissingPermission")
-fun BluetoothDevice.toScannedDevice(p: ActivityPermManager): BluetoothScannedDevice {
+fun BluetoothDevice.toScannedDevice(p: ActivityPermManager): ScannedDevice {
     val deviceName = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
         p.hasPerm(Manifest.permission.BLUETOOTH_CONNECT)) {
         name
@@ -97,7 +71,7 @@ fun BluetoothDevice.toScannedDevice(p: ActivityPermManager): BluetoothScannedDev
         null
     }
     val deviceMacAddress = address // MAC address
-    return BluetoothScannedDevice(
+    return ScannedDevice(
         deviceName ?: "",
         deviceMacAddress ?: "",
         this
