@@ -10,6 +10,8 @@ Several methods were tried in vain:
 
  - if even low level l2cap connection isn't working, there is little chance for higher level protocoles like HID to work. But by reading the AOSP, I found this [BluetoothHidHost](https://android.googlesource.com/platform/frameworks/base.git/+/5e1c9fe7fc35fd9dfc0703379c380f3eec47cfd6/core/java/android/bluetooth/BluetoothHidHost.java) class. So I tried some java reflection to use it despite it not being in the public API. I could get the proxy by giving `HID_HOST=4` as a profile enum to `BluetoothAdapter.getProfileProxy` but the proxy couldn't connect devices, the same timeout as with the l2cap method occures.
 
+ - one last thing I tried was to directly connect to the low-level hidraw device with [libusb/hidapi](https://github.com/libusb/hidapi). But hidapi's [bluetooth backend](https://github.com/libusb/hidapi#linuxhidraw-linuxhidc) only works on linux and uses `libudev` which can't be used with android AFAIK. Someone could maybe try to implement a backend for android but I doubt it will have the rights to access the `hidraw` device on an unrooted phone.
+
 ## Hope
 As the `BluetoothHidHost` is still not in the public API, there is hope for it to become available in the future, which might mean that wiimote controller could be used with newer phones in the future.
 
