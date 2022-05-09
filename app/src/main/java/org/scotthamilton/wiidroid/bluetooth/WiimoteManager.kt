@@ -17,6 +17,7 @@ import androidx.compose.material.SnackbarHostState
 import androidx.core.content.ContextCompat.getSystemService
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.*
+import org.scotthamilton.wiidroid.MainActivity
 import org.scotthamilton.wiidroid.R
 import org.scotthamilton.wiidroid.bluetooth.utils.*
 import java.lang.IllegalArgumentException
@@ -41,8 +42,11 @@ class WiimoteManagerImpl(
 ) : WiimoteManager, ActivityPermManager by p, BluetoothScanManager by s {
     companion object {
         const val TAG = "WiimoteManagerImpl"
+        init {
+            System.loadLibrary("native-lib");
+        }
     }
-    private val hidProxyManager = BluetoothHidProxyManager()
+//    private val hidProxyManager = BluetoothHidProxyManager()
     private val scanEndedJobsConsumer = AsyncJobConsumer<Boolean>()
     private val pairingRequestJobsConsumer = AsyncJobConsumer<String>()
     private val bondStatusChangeJobsConsumer = AsyncJobConsumer<String>()
@@ -55,6 +59,10 @@ class WiimoteManagerImpl(
     private var bluetoothManager: BluetoothManager? = null
     private var bluetoothAdapter: BluetoothAdapter? = null
     private var singleshotOnBluetoothEnabled: (()->Unit)? = null
+
+    external fun initHID(): String
+    external fun connectHID(): Int
+
     private val bluetoothBroadcastReceiver = object : BroadcastReceiver() {
         @SuppressLint("MissingPermission")
         override fun onReceive(context: Context, intent: Intent) {
@@ -208,7 +216,8 @@ class WiimoteManagerImpl(
         configurePerm(ACCESS_COARSE_LOCATION, "Stupidly, coarse location is needed.")
         configurePerm(BLUETOOTH_PRIVILEGED, "Stupidly, bluetooth privileges are needed.")
 
-        hidProxyManager.setup(bluetoothAdapter, activity)
+        Log.d(MainActivity.TAG, "initHID()=${initHID()}")
+//        hidProxyManager.setup(bluetoothAdapter, activity)
     }
     override fun cleanUp() {
         unregisterBluetoothBroadcastReceiver()
@@ -291,6 +300,7 @@ class WiimoteManagerImpl(
                    true
                 }
                 if (paired) {
+                    connectHID()
                     // L2Cap
 //                    val pcm = 0x13
 //                    val socket = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {

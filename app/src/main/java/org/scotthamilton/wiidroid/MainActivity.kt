@@ -44,15 +44,10 @@ class MainActivity(m: WiimoteManagerImplType = WiimoteManagerImplType()) :
     WiimoteComponentActivity<WiimoteManagerImplType>(m) {
     companion object {
         const val TAG = "MainActivity"
-        init {
-            System.loadLibrary("native-lib");
-        }
     }
-    external fun testInitHIDAPI(): String
     @RequiresApi(Build.VERSION_CODES.S)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d(TAG, "testInitHIDAPI()=${testInitHIDAPI()}")
         setContent {
             WiidroidTheme {
                 // A surface container using the 'background' color from the theme
